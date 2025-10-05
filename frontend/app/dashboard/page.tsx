@@ -14,6 +14,10 @@ export default function DashboardPage() {
   const [showVacationModal, setShowVacationModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
+  const [userFilter, setUserFilter] = useState('');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -49,11 +53,23 @@ export default function DashboardPage() {
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     
+    const start = formData.get('startDate') as string;
+    const end = formData.get('endDate') as string;
+
+    if (new Date(start) > new Date(end)) {
+      alert('End date must be after start date');
+      setLoading(false);
+      return;
+    }
+
+    if (new Date(start) < new Date()) {
+      alert('Start date cannot be in the past');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await api.createVacation({
-        startDate: formData.get('startDate') as string,
-        endDate: formData.get('endDate') as string,
-      });
+      await api.createVacation({ startDate: start, endDate: end });
       setShowVacationModal(false);
       loadVacations();
     } catch (error) {
@@ -135,6 +151,18 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
+  const formatDate = (dateString: string) => {
+    const [year, month, day] = dateString.split('-');
+    return `${day}-${month}-${year}`;
+  };
+
+  const filteredVacations = vacations.filter(v => {
+    const matchesUser = !userFilter || v.userName.toLowerCase().includes(userFilter.toLowerCase());
+    const matchesStart = !startDateFilter || v.startDate >= startDateFilter;
+    const matchesEnd = !endDateFilter || v.endDate <= endDateFilter;
+    return matchesUser && matchesStart && matchesEnd;
+  });
+
   const canApprove = user.role === Role.ADMIN || user.role === Role.MANAGER;
 
   return (
@@ -184,9 +212,9 @@ export default function DashboardPage() {
                 <tbody>
                   {users.map((u) => (
                     <tr key={u.id} className="border-b">
-                      <td className="py-3 px-4">{u.name}</td>
-                      <td className="py-3 px-4">{u.email}</td>
-                      <td className="py-3 px-4">{u.role}</td>
+                      <td className="py-3 px-4 text-black font-medium">{u.name}</td>
+                      <td className="py-3 px-4 text-black">{u.email}</td>
+                      <td className="py-3 px-4 text-black">{u.role}</td>
                       <td className="py-3 px-4">
                         <button
                           onClick={() => handleDeleteUser(u.id)}
@@ -203,33 +231,62 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-sm p-6">
+        <div className="bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-700">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">Vacation Requests</h2>
-            <button
-              onClick={() => setShowVacationModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-            >
-              New Request
-            </button>
+            <h2 className="text-xl font-bold text-white">Vacation Requests</h2>
+            {user.role !== Role.ADMIN && (
+              <button
+                onClick={() => setShowVacationModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                New Request
+              </button>
+            )}
           </div>
+
+          <div className={`grid ${user.role === Role.COLLABORATOR ? 'grid-cols-2' : 'grid-cols-3'} gap-4 mb-4`}>
+            {user.role !== Role.COLLABORATOR && (
+              <input
+                type="text"
+                placeholder="Filter by employee"
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400"
+              />
+            )}
+            <input
+              type="date"
+              placeholder="Start date from"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+            />
+            <input
+              type="date"
+              placeholder="End date until"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+            />
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">Employee</th>
-                  <th className="text-left py-3 px-4">Start Date</th>
-                  <th className="text-left py-3 px-4">End Date</th>
-                  <th className="text-left py-3 px-4">Status</th>
-                  <th className="text-left py-3 px-4">Actions</th>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left py-3 px-4 text-white font-semibold">Employee</th>
+                  <th className="text-left py-3 px-4 text-white font-semibold">Start Date</th>
+                  <th className="text-left py-3 px-4 text-white font-semibold">End Date</th>
+                  <th className="text-left py-3 px-4 text-white font-semibold">Status</th>
+                  <th className="text-left py-3 px-4 text-white font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {vacations.map((v) => (
-                  <tr key={v.id} className="border-b">
-                    <td className="py-3 px-4">{v.userName}</td>
-                    <td className="py-3 px-4">{v.startDate}</td>
-                    <td className="py-3 px-4">{v.endDate}</td>
+                {filteredVacations.map((v) => (
+                  <tr key={v.id} className="border-b border-gray-700">
+                    <td className="py-3 px-4 text-gray-300 font-medium">{v.userName}</td>
+                    <td className="py-3 px-4 text-gray-300">{formatDate(v.startDate)}</td>
+                    <td className="py-3 px-4 text-gray-300">{formatDate(v.endDate)}</td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-1 rounded text-xs ${
                         v.status === VacationStatus.APPROVED ? 'bg-green-100 text-green-800' :
@@ -274,23 +331,23 @@ export default function DashboardPage() {
       </main>
 
       {showVacationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold mb-4">New Vacation Request</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h3 className="text-lg font-bold mb-4 text-white">New Vacation Request</h3>
             <form onSubmit={handleCreateVacation}>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Start Date</label>
-                <input type="date" name="startDate" required className="w-full px-3 py-2 border rounded-lg text-gray-900" />
+                <label className="block text-sm font-semibold mb-2 text-white">Start Date</label>
+                <input type="date" name="startDate" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">End Date</label>
-                <input type="date" name="endDate" required className="w-full px-3 py-2 border rounded-lg text-gray-900" />
+                <label className="block text-sm font-semibold mb-2 text-white">End Date</label>
+                <input type="date" name="endDate" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="flex gap-2">
                 <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
                   Create
                 </button>
-                <button type="button" onClick={() => setShowVacationModal(false)} className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300">
+                <button type="button" onClick={() => setShowVacationModal(false)} className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium">
                   Cancel
                 </button>
               </div>
@@ -300,33 +357,52 @@ export default function DashboardPage() {
       )}
 
       {showUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
-            <h3 className="text-lg font-bold mb-4">New User</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h3 className="text-lg font-bold mb-4 text-white">New User</h3>
             <form onSubmit={handleCreateUser}>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Name</label>
-                <input type="text" name="name" required className="w-full px-3 py-2 border rounded-lg text-gray-900" />
+                <label className="block text-sm font-semibold mb-2 text-white">Name</label>
+                <input type="text" name="name" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Email</label>
-                <input type="email" name="email" required className="w-full px-3 py-2 border rounded-lg text-gray-900" />
+                <label className="block text-sm font-semibold mb-2 text-white">Email</label>
+                <input type="email" name="email" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Password</label>
-                <input type="password" name="password" required className="w-full px-3 py-2 border rounded-lg text-gray-900" />
+                <label className="block text-sm font-semibold mb-2 text-white">Password</label>
+                <input type="password" name="password" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Role</label>
-                <select name="role" required className="w-full px-3 py-2 border rounded-lg text-gray-900">
+                <label className="block text-sm font-semibold mb-2 text-white">Role</label>
+                <select 
+                  id="roleSelect" 
+                  name="role" 
+                  required 
+                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  onChange={(e) => {
+                    const managerSelect = document.getElementById('managerSelect') as HTMLSelectElement;
+                    const managerLabel = document.getElementById('managerLabel') as HTMLLabelElement;
+                    if (e.target.value === 'COLLABORATOR') {
+                      managerSelect.required = true;
+                      managerLabel.innerHTML = 'Manager <span class="text-red-400">*</span>';
+                    } else {
+                      managerSelect.required = false;
+                      managerLabel.innerHTML = 'Manager <span class="text-gray-500">(optional)</span>';
+                    }
+                  }}
+                >
                   <option value="COLLABORATOR">Collaborator</option>
                   <option value="MANAGER">Manager</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
               <div className="mb-4">
-                <label className="block text-sm font-medium mb-2">Manager (optional)</label>
-                <select name="managerId" className="w-full px-3 py-2 border rounded-lg text-gray-900">
+                <label id="managerLabel" className="block text-sm font-semibold mb-2 text-white">
+                  Manager <span className="text-red-400">*</span>
+                </label>
+                <select id="managerSelect" name="managerId" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white">
+                  <option value="">Select a manager</option>
                   <option value="">None</option>
                   {users.filter(u => u.role === Role.MANAGER).map(u => (
                     <option key={u.id} value={u.id}>{u.name}</option>
@@ -337,7 +413,7 @@ export default function DashboardPage() {
                 <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
                   Create
                 </button>
-                <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-200 py-2 rounded-lg hover:bg-gray-300">
+                <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium">
                   Cancel
                 </button>
               </div>
