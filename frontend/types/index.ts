@@ -4,11 +4,18 @@ export enum Role {
   COLLABORATOR = 'COLLABORATOR'
 }
 
+export enum VacationStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED'
+}
+
 export interface User {
   id: number;
   email: string;
   name: string;
   role: Role;
+  managerId?: number;
 }
 
 export interface AuthResponse {
@@ -22,4 +29,13 @@ export interface AuthResponse {
 export interface LoginRequest {
   email: string;
   password: string;
+}
+
+export interface VacationRequest {
+  id: number;
+  userId: number;
+  userName: string;
+  startDate: string;
+  endDate: string;
+  status: VacationStatus;
 }
