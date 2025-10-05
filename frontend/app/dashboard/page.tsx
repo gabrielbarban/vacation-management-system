@@ -18,6 +18,9 @@ export default function DashboardPage() {
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [deleteUserConfirm, setDeleteUserConfirm] = useState<{ id: number; name: string; hasVacations: boolean } | null>(null);
+  const [deleteVacationConfirm, setDeleteVacationConfirm] = useState<number | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -30,11 +33,16 @@ export default function DashboardPage() {
     }
   }, [user, isLoading, router]);
 
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const loadVacations = async () => {
     try {
       const data = await api.getVacations();
       setVacations(data);
-    } catch (error) {
+    } catch {
       console.error('Failed to load vacations');
     }
   };
@@ -43,7 +51,7 @@ export default function DashboardPage() {
     try {
       const data = await api.getUsers();
       setUsers(data);
-    } catch (error) {
+    } catch {
       console.error('Failed to load users');
     }
   };
@@ -72,7 +80,7 @@ export default function DashboardPage() {
       await api.createVacation({ startDate: start, endDate: end });
       setShowVacationModal(false);
       loadVacations();
-    } catch (error) {
+    } catch {
       alert('Failed to create vacation');
     } finally {
       setLoading(false);
@@ -84,17 +92,26 @@ export default function DashboardPage() {
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     
+    const role = formData.get('role') as string;
+    const managerId = formData.get('managerId') as string;
+
+    if (role === 'COLLABORATOR' && !managerId) {
+      alert('Collaborators MUST have a manager assigned!');
+      setLoading(false);
+      return;
+    }
+
     try {
       await api.createUser({
         email: formData.get('email') as string,
         password: formData.get('password') as string,
         name: formData.get('name') as string,
-        role: formData.get('role') as string,
-        managerId: (formData.get('managerId') as string) || null,
+        role,
+        managerId: managerId || null,
       });
       setShowUserModal(false);
       loadUsers();
-    } catch (error) {
+    } catch {
       alert('Failed to create user');
     } finally {
       setLoading(false);
@@ -105,7 +122,7 @@ export default function DashboardPage() {
     try {
       await api.approveVacation(id);
       loadVacations();
-    } catch (error) {
+    } catch {
       alert('Failed to approve');
     }
   };
@@ -114,37 +131,75 @@ export default function DashboardPage() {
     try {
       await api.rejectVacation(id);
       loadVacations();
-    } catch (error) {
+    } catch {
       alert('Failed to reject');
     }
   };
 
-  const handleDeleteVacation = async (id: number) => {
-    if (confirm('Delete this vacation?')) {
-      try {
-        await api.deleteVacation(id);
-        loadVacations();
-      } catch (error) {
-        alert('Failed to delete');
+  const handleDeleteUser = async (id: number, name: string) => {
+    setDeleteUserConfirm({ id, name, hasVacations: false });
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUserConfirm) return;
+    
+    try {
+      await api.deleteUser(deleteUserConfirm.id);
+      loadUsers();
+      showToast('User deleted successfully!', 'success');
+      setDeleteUserConfirm(null);
+    } catch (error: unknown) {
+      const err = error as { hasVacations?: boolean };
+      if (err.hasVacations) {
+        setDeleteUserConfirm({ ...deleteUserConfirm, hasVacations: true });
+      } else {
+        showToast('Failed to delete user', 'error');
+        setDeleteUserConfirm(null);
       }
     }
   };
 
-  const handleDeleteUser = async (id: number) => {
-    if (confirm('Delete this user?')) {
-      try {
-        await api.deleteUser(id);
-        loadUsers();
-      } catch (error) {
-        alert('Failed to delete');
+  const confirmDeleteUserWithVacations = async () => {
+    if (!deleteUserConfirm) return;
+    
+    try {
+      const userVacations = vacations.filter(v => v.userId === deleteUserConfirm.id);
+      for (const vacation of userVacations) {
+        await api.deleteVacation(vacation.id);
       }
+      await api.deleteUser(deleteUserConfirm.id);
+      loadUsers();
+      loadVacations();
+      showToast('User and vacations deleted successfully!', 'success');
+      setDeleteUserConfirm(null);
+    } catch {
+      showToast('Failed to delete user', 'error');
+      setDeleteUserConfirm(null);
+    }
+  };
+
+  const handleDeleteVacation = async (id: number) => {
+    setDeleteVacationConfirm(id);
+  };
+
+  const confirmDeleteVacation = async () => {
+    if (!deleteVacationConfirm) return;
+    
+    try {
+      await api.deleteVacation(deleteVacationConfirm);
+      loadVacations();
+      showToast('Vacation deleted successfully!', 'success');
+      setDeleteVacationConfirm(null);
+    } catch {
+      showToast('Failed to delete vacation', 'error');
+      setDeleteVacationConfirm(null);
     }
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-white">Loading...</div>
       </div>
     );
   }
@@ -166,22 +221,34 @@ export default function DashboardPage() {
   const canApprove = user.role === Role.ADMIN || user.role === Role.MANAGER;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm border-b">
+    <div className="min-h-screen bg-gray-900">
+      <nav className="bg-gray-800 shadow-sm border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-bold text-gray-900">Vacation Management</h1>
-            <div className="flex items-center gap-4">
-              <div className="text-sm">
-                <p className="font-medium text-gray-900">{user.name}</p>
-                <p className="text-gray-500">{user.role}</p>
-              </div>
+            <h1 className="text-xl font-bold text-white">Vacation Management</h1>
+            <div className="relative">
               <button
-                onClick={logout}
-                className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 rounded-lg transition"
               >
-                Logout
+                <div className="text-right">
+                  <p className="font-medium text-white">{user.name}</p>
+                  <p className="text-gray-400 text-xs">{user.role}</p>
+                </div>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg border border-gray-700 z-50">
+                  <button
+                    onClick={() => { logout(); setShowUserMenu(false); }}
+                    className="w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-700 rounded-lg"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -189,9 +256,9 @@ export default function DashboardPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {user.role === Role.ADMIN && (
-          <div className="mb-8 bg-white rounded-xl shadow-sm p-6">
+          <div className="mb-8 bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-700">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900">Users</h2>
+              <h2 className="text-xl font-bold text-white">Users</h2>
               <button
                 onClick={() => setShowUserModal(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
@@ -202,25 +269,28 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4">Name</th>
-                    <th className="text-left py-3 px-4">Email</th>
-                    <th className="text-left py-3 px-4">Role</th>
-                    <th className="text-left py-3 px-4">Actions</th>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-3 px-4 text-white font-semibold">Name</th>
+                    <th className="text-left py-3 px-4 text-white font-semibold">Email</th>
+                    <th className="text-left py-3 px-4 text-white font-semibold">Role</th>
+                    <th className="text-left py-3 px-4 text-white font-semibold">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
-                    <tr key={u.id} className="border-b">
-                      <td className="py-3 px-4 text-black font-medium">{u.name}</td>
-                      <td className="py-3 px-4 text-black">{u.email}</td>
-                      <td className="py-3 px-4 text-black">{u.role}</td>
+                    <tr key={u.id} className="border-b border-gray-700">
+                      <td className="py-3 px-4 text-white font-medium">{u.name}</td>
+                      <td className="py-3 px-4 text-white">{u.email}</td>
+                      <td className="py-3 px-4 text-white">{u.role}</td>
                       <td className="py-3 px-4">
                         <button
-                          onClick={() => handleDeleteUser(u.id)}
-                          className="text-red-600 hover:text-red-700 text-sm"
+                          onClick={() => handleDeleteUser(u.id, u.name)}
+                          className="text-red-400 hover:text-red-300 transition"
+                          title="Delete user"
                         >
-                          Delete
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       </td>
                     </tr>
@@ -284,14 +354,14 @@ export default function DashboardPage() {
               <tbody>
                 {filteredVacations.map((v) => (
                   <tr key={v.id} className="border-b border-gray-700">
-                    <td className="py-3 px-4 text-gray-300 font-medium">{v.userName}</td>
-                    <td className="py-3 px-4 text-gray-300">{formatDate(v.startDate)}</td>
-                    <td className="py-3 px-4 text-gray-300">{formatDate(v.endDate)}</td>
+                    <td className="py-3 px-4 text-white font-medium">{v.userName}</td>
+                    <td className="py-3 px-4 text-white">{formatDate(v.startDate)}</td>
+                    <td className="py-3 px-4 text-white">{formatDate(v.endDate)}</td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        v.status === VacationStatus.APPROVED ? 'bg-green-100 text-green-800' :
-                        v.status === VacationStatus.REJECTED ? 'bg-red-100 text-red-800' :
-                        'bg-yellow-100 text-yellow-800'
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        v.status === VacationStatus.APPROVED ? 'bg-green-900 text-green-200 border border-green-700' :
+                        v.status === VacationStatus.REJECTED ? 'bg-red-900 text-red-200 border border-red-700' :
+                        'bg-yellow-900 text-yellow-200 border border-yellow-700'
                       }`}>
                         {v.status}
                       </span>
@@ -302,23 +372,32 @@ export default function DashboardPage() {
                           <>
                             <button
                               onClick={() => handleApprove(v.id)}
-                              className="text-green-600 hover:text-green-700 text-sm"
+                              className="text-green-400 hover:text-green-300 transition"
+                              title="Approve vacation"
                             >
-                              Approve
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                             </button>
                             <button
                               onClick={() => handleReject(v.id)}
-                              className="text-red-600 hover:text-red-700 text-sm"
+                              className="text-red-400 hover:text-red-300 transition"
+                              title="Reject vacation"
                             >
-                              Reject
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                             </button>
                           </>
                         )}
                         <button
                           onClick={() => handleDeleteVacation(v.id)}
-                          className="text-red-600 hover:text-red-700 text-sm"
+                          className="text-red-400 hover:text-red-300 transition"
+                          title="Delete vacation"
                         >
-                          Delete
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </button>
                       </div>
                     </td>
@@ -331,7 +410,7 @@ export default function DashboardPage() {
       </main>
 
       {showVacationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <h3 className="text-lg font-bold mb-4 text-white">New Vacation Request</h3>
             <form onSubmit={handleCreateVacation}>
@@ -344,7 +423,7 @@ export default function DashboardPage() {
                 <input type="date" name="endDate" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white" />
               </div>
               <div className="flex gap-2">
-                <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium">
                   Create
                 </button>
                 <button type="button" onClick={() => setShowVacationModal(false)} className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium">
@@ -357,7 +436,7 @@ export default function DashboardPage() {
       )}
 
       {showUserModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
           <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
             <h3 className="text-lg font-bold mb-4 text-white">New User</h3>
             <form onSubmit={handleCreateUser}>
@@ -403,14 +482,13 @@ export default function DashboardPage() {
                 </label>
                 <select id="managerSelect" name="managerId" required className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white">
                   <option value="">Select a manager</option>
-                  <option value="">None</option>
                   {users.filter(u => u.role === Role.MANAGER).map(u => (
                     <option key={u.id} value={u.id}>{u.name}</option>
                   ))}
                 </select>
               </div>
               <div className="flex gap-2">
-                <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                <button type="submit" disabled={loading} className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 font-medium">
                   Create
                 </button>
                 <button type="button" onClick={() => setShowUserModal(false)} className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium">
@@ -418,6 +496,73 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg border z-50 ${
+          toast.type === 'success' 
+            ? 'bg-green-900 text-green-200 border-green-700' 
+            : 'bg-red-900 text-red-200 border-red-700'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+
+      {deleteUserConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h3 className="text-lg font-bold mb-4 text-white">Confirm Deletion</h3>
+            {deleteUserConfirm.hasVacations ? (
+              <p className="text-white mb-6">
+                <span className="font-semibold">{deleteUserConfirm.name}</span> has existing vacation requests. 
+                Delete user and all their vacation requests?
+              </p>
+            ) : (
+              <p className="text-white mb-6">
+                Are you sure you want to delete <span className="font-semibold">{deleteUserConfirm.name}</span>?
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button 
+                onClick={deleteUserConfirm.hasVacations ? confirmDeleteUserWithVacations : confirmDeleteUser}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 font-medium"
+              >
+                {deleteUserConfirm.hasVacations ? 'Yes, Delete All' : 'Yes, Delete'}
+              </button>
+              <button 
+                onClick={() => setDeleteUserConfirm(null)}
+                className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteVacationConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+            <h3 className="text-lg font-bold mb-4 text-white">Confirm Deletion</h3>
+            <p className="text-white mb-6">
+              Are you sure you want to delete this vacation request?
+            </p>
+            <div className="flex gap-2">
+              <button 
+                onClick={confirmDeleteVacation}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 font-medium"
+              >
+                Yes, Delete
+              </button>
+              <button 
+                onClick={() => setDeleteVacationConfirm(null)}
+                className="flex-1 bg-gray-700 text-white py-2 rounded-lg hover:bg-gray-600 font-medium"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

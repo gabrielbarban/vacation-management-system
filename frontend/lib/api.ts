@@ -51,6 +51,16 @@ export const api = {
       headers: { ...getAuthHeader() },
     });
 
+    if (response.status === 409) {
+      const data = await response.json();
+      throw { hasVacations: true, message: data.message };
+    }
+
+    if (response.status === 403) {
+      const data = await response.json();
+      throw { cannotDeleteSelf: true, message: data.message };
+    }
+
     if (!response.ok) throw new Error('Failed to delete user');
   },
 

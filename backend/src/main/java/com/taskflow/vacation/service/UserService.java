@@ -4,7 +4,9 @@ import com.taskflow.vacation.dto.CreateUserRequest;
 import com.taskflow.vacation.dto.UpdateUserRequest;
 import com.taskflow.vacation.dto.UserResponse;
 import com.taskflow.vacation.entity.User;
+import com.taskflow.vacation.entity.VacationRequest;
 import com.taskflow.vacation.repository.UserRepository;
+import com.taskflow.vacation.repository.VacationRequestRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,9 @@ public class UserService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private VacationRequestRepository vacationRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -87,7 +92,20 @@ public class UserService {
         if (!userRepository.existsById(id)) {
             throw new RuntimeException("User not found");
         }
+        
+        User user = userRepository.findById(id).get();
+        List<VacationRequest> userVacations = vacationRepository.findByUser(user);
+        
+        if (!userVacations.isEmpty()) {
+            throw new IllegalStateException("Cannot delete user with existing vacation requests");
+        }
+        
         userRepository.deleteById(id);
+    }
+
+    public boolean isCurrentUser(Long userId, String email) {
+        User currentUser = userRepository.findByEmail(email).orElse(null);
+        return currentUser != null && currentUser.getId().equals(userId);
     }
 
     private UserResponse mapToResponse(User user) {
