@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Role, VacationRequest, VacationStatus, User } from '@/types';
+import Calendar from '@/components/Calendar';
 
 export default function DashboardPage() {
   const { user, logout, isLoading } = useAuth();
@@ -22,6 +23,7 @@ export default function DashboardPage() {
   const [deleteUserConfirm, setDeleteUserConfirm] = useState<{ id: number; name: string; hasVacations: boolean } | null>(null);
   const [deleteVacationConfirm, setDeleteVacationConfirm] = useState<number | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'calendar'>('table');
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -308,108 +310,136 @@ export default function DashboardPage() {
         <div className="bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-700">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold text-white">Vacation Requests</h2>
-            {user.role !== Role.ADMIN && (
+            <div className="flex gap-2">
               <button
-                onClick={() => setShowVacationModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                onClick={() => setViewMode('table')}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  viewMode === 'table' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
               >
-                New Request
+                Table View
               </button>
-            )}
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-4 py-2 rounded-lg font-medium transition ${
+                  viewMode === 'calendar' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                Calendar View
+              </button>
+              {user.role !== Role.ADMIN && (
+                <button
+                  onClick={() => setShowVacationModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition ml-2"
+                >
+                  New Request
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className={`grid ${user.role === Role.COLLABORATOR ? 'grid-cols-2' : 'grid-cols-3'} gap-4 mb-4`}>
-            {user.role !== Role.COLLABORATOR && (
-              <input
-                type="text"
-                placeholder="Filter by employee"
-                value={userFilter}
-                onChange={(e) => setUserFilter(e.target.value)}
-                className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400"
-              />
-            )}
-            <input
-              type="date"
-              placeholder="Start date from"
-              value={startDateFilter}
-              onChange={(e) => setStartDateFilter(e.target.value)}
-              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-            />
-            <input
-              type="date"
-              placeholder="End date until"
-              value={endDateFilter}
-              onChange={(e) => setEndDateFilter(e.target.value)}
-              className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
-            />
-          </div>
+          {viewMode === 'table' ? (
+            <>
+              <div className={`grid ${user.role === Role.COLLABORATOR ? 'grid-cols-2' : 'grid-cols-3'} gap-4 mb-4`}>
+                {user.role !== Role.COLLABORATOR && (
+                  <input
+                    type="text"
+                    placeholder="Filter by employee"
+                    value={userFilter}
+                    onChange={(e) => setUserFilter(e.target.value)}
+                    className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400"
+                  />
+                )}
+                <input
+                  type="date"
+                  placeholder="Start date from"
+                  value={startDateFilter}
+                  onChange={(e) => setStartDateFilter(e.target.value)}
+                  className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+                <input
+                  type="date"
+                  placeholder="End date until"
+                  value={endDateFilter}
+                  onChange={(e) => setEndDateFilter(e.target.value)}
+                  className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-700">
-                  <th className="text-left py-3 px-4 text-white font-semibold">Employee</th>
-                  <th className="text-left py-3 px-4 text-white font-semibold">Start Date</th>
-                  <th className="text-left py-3 px-4 text-white font-semibold">End Date</th>
-                  <th className="text-left py-3 px-4 text-white font-semibold">Status</th>
-                  <th className="text-left py-3 px-4 text-white font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVacations.map((v) => (
-                  <tr key={v.id} className="border-b border-gray-700">
-                    <td className="py-3 px-4 text-white font-medium">{v.userName}</td>
-                    <td className="py-3 px-4 text-white">{formatDate(v.startDate)}</td>
-                    <td className="py-3 px-4 text-white">{formatDate(v.endDate)}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        v.status === VacationStatus.APPROVED ? 'bg-green-900 text-green-200 border border-green-700' :
-                        v.status === VacationStatus.REJECTED ? 'bg-red-900 text-red-200 border border-red-700' :
-                        'bg-yellow-900 text-yellow-200 border border-yellow-700'
-                      }`}>
-                        {v.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex gap-2">
-                        {canApprove && v.status === VacationStatus.PENDING && (
-                          <>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-700">
+                      <th className="text-left py-3 px-4 text-white font-semibold">Employee</th>
+                      <th className="text-left py-3 px-4 text-white font-semibold">Start Date</th>
+                      <th className="text-left py-3 px-4 text-white font-semibold">End Date</th>
+                      <th className="text-left py-3 px-4 text-white font-semibold">Status</th>
+                      <th className="text-left py-3 px-4 text-white font-semibold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredVacations.map((v) => (
+                      <tr key={v.id} className="border-b border-gray-700">
+                        <td className="py-3 px-4 text-white font-medium">{v.userName}</td>
+                        <td className="py-3 px-4 text-white">{formatDate(v.startDate)}</td>
+                        <td className="py-3 px-4 text-white">{formatDate(v.endDate)}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            v.status === VacationStatus.APPROVED ? 'bg-green-900 text-green-200 border border-green-700' :
+                            v.status === VacationStatus.REJECTED ? 'bg-red-900 text-red-200 border border-red-700' :
+                            'bg-yellow-900 text-yellow-200 border border-yellow-700'
+                          }`}>
+                            {v.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex gap-2">
+                            {canApprove && v.status === VacationStatus.PENDING && (
+                              <>
+                                <button
+                                  onClick={() => handleApprove(v.id)}
+                                  className="text-green-400 hover:text-green-300 transition"
+                                  title="Approve vacation"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={() => handleReject(v.id)}
+                                  className="text-red-400 hover:text-red-300 transition"
+                                  title="Reject vacation"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                </button>
+                              </>
+                            )}
                             <button
-                              onClick={() => handleApprove(v.id)}
-                              className="text-green-400 hover:text-green-300 transition"
-                              title="Approve vacation"
-                            >
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleReject(v.id)}
+                              onClick={() => handleDeleteVacation(v.id)}
                               className="text-red-400 hover:text-red-300 transition"
-                              title="Reject vacation"
+                              title="Delete vacation"
                             >
                               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                             </button>
-                          </>
-                        )}
-                        <button
-                          onClick={() => handleDeleteVacation(v.id)}
-                          className="text-red-400 hover:text-red-300 transition"
-                          title="Delete vacation"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <Calendar vacations={filteredVacations} />
+          )}
         </div>
       </main>
 
@@ -464,7 +494,7 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
                   >
                     {showPassword ? (
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
